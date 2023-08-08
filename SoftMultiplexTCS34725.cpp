@@ -19,71 +19,6 @@ SoftMultiplexTCS34725::SoftMultiplexTCS34725(tcs34725IntegrationTime_t integrati
     }
 }
 
-bool SoftMultiplexTCS34725::begin() {
-    // Try to read the device ID from the TCS34725 sensor
-    uint8_t id;
-    if (!SoftI2CReadRegister(TCS34725_ADDRESS, TCS34725_ID, &id, 1)) {
-        return false; // Failed to read from the sensor
-    }
-
-    // Check if the ID matches the expected values for TCS34725
-    Serial.println(id, HEX);
-    if ((id != 0x4d) && (id != 0x44) && (id != 0x10)) {
-        return false; // Wrong sensor ID
-    }
-
-    // Set the integration time and gain
-    if (!SoftI2CWrite(TCS34725_ADDRESS, TCS34725_ATIME, (uint8_t *)&_integrationTime, 1)) {
-        return false; // Failed to set integration time
-    }
-
-    if (!SoftI2CWrite(TCS34725_ADDRESS, TCS34725_CONTROL, (uint8_t *)&_gain, 1)) {
-        return false; // Failed to set gain
-    }
-
-    // Enable the sensor
-    uint8_t enable = TCS34725_POWER_ON | TCS34725_ADC_ENABLE;
-    if (!SoftI2CWrite(TCS34725_ADDRESS, TCS34725_ENABLE, &enable, 1)) {
-        return false; // Failed to enable the sensor
-    }
-
-    return true; // Initialization successful
-}
-
-void SoftMultiplexTCS34725::setInterrupt(bool flag) {
-    uint8_t regValue;
-    
-    // Read the current value of the ENABLE register
-    if (!SoftI2CReadRegister(TCS34725_ADDRESS, TCS34725_ENABLE, &regValue, 1)) {
-        return; // Failed to read from the sensor
-    }
-
-    // Set or clear the interrupt enable bit based on the flag
-    if (flag) {
-        regValue |= TCS34725_INTERRUPT_ENABLE; // Enable interrupt
-    } else {
-        regValue &= ~TCS34725_INTERRUPT_ENABLE; // Disable interrupt
-    }
-
-    // Write the updated value back to the ENABLE register
-    SoftI2CWrite(TCS34725_ADDRESS, TCS34725_ENABLE, &regValue, 1);
-}
-
-void SoftMultiplexTCS34725::getRawData(uint16_t *red, uint16_t *green, uint16_t *blue, uint16_t *clear) {
-    uint8_t data[8]; // Buffer to store raw data from the sensor
-
-    // Read the raw color data from the sensor
-    if (!SoftI2CReadRegister(TCS34725_ADDRESS, TCS34725_CDATAL, data, 8)) {
-        return; // Failed to read from the sensor
-    }
-
-    // Convert the 8 bytes of data into 4 16-bit values
-    *clear = ((uint16_t)data[1] << 8) | data[0];
-    *red   = ((uint16_t)data[3] << 8) | data[2];
-    *green = ((uint16_t)data[5] << 8) | data[4];
-    *blue  = ((uint16_t)data[7] << 8) | data[6];
-}
-
 uint8_t SoftMultiplexTCS34725::SoftI2CReadRegister(uint8_t address, uint8_t reg, uint8_t *pData, uint8_t nLen) {
     // Helper functions to handle both digital and analog pins
     auto writePin = [this](uint8_t pin, uint8_t value) {
@@ -295,3 +230,67 @@ uint8_t SoftMultiplexTCS34725::SoftI2CWrite(uint8_t address, uint8_t reg, uint8_
     return 1; // Successful write
 }
 
+bool SoftMultiplexTCS34725::begin() {
+    // Try to read the device ID from the TCS34725 sensor
+    uint8_t id;
+    if (!SoftI2CReadRegister(TCS34725_ADDRESS, TCS34725_ID, &id, 1)) {
+        return false; // Failed to read from the sensor
+    }
+
+    // Check if the ID matches the expected values for TCS34725
+    Serial.println(id, HEX);
+    if ((id != 0x4d) && (id != 0x44) && (id != 0x10)) {
+        return false; // Wrong sensor ID
+    }
+
+    // Set the integration time and gain
+    if (!SoftI2CWrite(TCS34725_ADDRESS, TCS34725_ATIME, (uint8_t *)&_integrationTime, 1)) {
+        return false; // Failed to set integration time
+    }
+
+    if (!SoftI2CWrite(TCS34725_ADDRESS, TCS34725_CONTROL, (uint8_t *)&_gain, 1)) {
+        return false; // Failed to set gain
+    }
+
+    // Enable the sensor
+    uint8_t enable = TCS34725_POWER_ON | TCS34725_ADC_ENABLE;
+    if (!SoftI2CWrite(TCS34725_ADDRESS, TCS34725_ENABLE, &enable, 1)) {
+        return false; // Failed to enable the sensor
+    }
+
+    return true; // Initialization successful
+}
+
+void SoftMultiplexTCS34725::setInterrupt(bool flag) {
+    uint8_t regValue;
+    
+    // Read the current value of the ENABLE register
+    if (!SoftI2CReadRegister(TCS34725_ADDRESS, TCS34725_ENABLE, &regValue, 1)) {
+        return; // Failed to read from the sensor
+    }
+
+    // Set or clear the interrupt enable bit based on the flag
+    if (flag) {
+        regValue |= TCS34725_INTERRUPT_ENABLE; // Enable interrupt
+    } else {
+        regValue &= ~TCS34725_INTERRUPT_ENABLE; // Disable interrupt
+    }
+
+    // Write the updated value back to the ENABLE register
+    SoftI2CWrite(TCS34725_ADDRESS, TCS34725_ENABLE, &regValue, 1);
+}
+
+void SoftMultiplexTCS34725::getRawData(uint16_t *red, uint16_t *green, uint16_t *blue, uint16_t *clear) {
+    uint8_t data[8]; // Buffer to store raw data from the sensor
+
+    // Read the raw color data from the sensor
+    if (!SoftI2CReadRegister(TCS34725_ADDRESS, TCS34725_CDATAL, data, 8)) {
+        return; // Failed to read from the sensor
+    }
+
+    // Convert the 8 bytes of data into 4 16-bit values
+    *clear = ((uint16_t)data[1] << 8) | data[0];
+    *red   = ((uint16_t)data[3] << 8) | data[2];
+    *green = ((uint16_t)data[5] << 8) | data[4];
+    *blue  = ((uint16_t)data[7] << 8) | data[6];
+}
