@@ -1,8 +1,24 @@
 #include "SoftMultiplexTCS34725.h"
 
-SoftMultiplexTCS34725::SoftMultiplexTCS34725(tcs34725IntegrationTime_t integrationTime, tcs34725Gain_t gain, uint8_t sdaPin, uint8_t sclPin)
-    : _integrationTime(integrationTime), _gain(gain), _sdaPin(sdaPin), _sclPin(sclPin) {
-    
+void writePin(uint8_t pin, uint8_t value) {
+    if (pin < A0) {
+        digitalWrite(pin, value);
+    } else {
+        analogWrite(pin, value ? 255 : 0);
+    }
+};
+
+auto readPin(uint8_t pin) -> uint8_t {
+    if (pin < A0) {
+        return digitalRead(pin);
+    } else {
+        return analogRead(pin) > 512 ? HIGH : LOW;
+    }
+};
+
+SoftMultiplexTCS34725::SoftMultiplexTCS34725(tcs34725IntegrationTime_t it, tcs34725Gain_t gain, uint8_t sdaPin, uint8_t sclPin, uint8_t i2cDelay)
+    : _sdaPin(sdaPin), _sclPin(sclPin), _integrationTime(it), _gain(gain), _i2cDelay(i2cDelay) {
+
     // Initialize the pins for software I2C
     if (_sdaPin < A0) { // Digital pin
         pinMode(_sdaPin, INPUT_PULLUP);
@@ -19,145 +35,120 @@ SoftMultiplexTCS34725::SoftMultiplexTCS34725(tcs34725IntegrationTime_t integrati
     }
 }
 
-uint8_t SoftMultiplexTCS34725::SoftI2CReadRegister(uint8_t address, uint8_t reg, uint8_t *pData, uint8_t nLen) {
-    // Helper functions to handle both digital and analog pins
-    auto writePin = [this](uint8_t pin, uint8_t value) {
-        if (pin < A0) {
-            digitalWrite(pin, value);
-        } else {
-            analogWrite(pin, value ? 255 : 0);
-        }
-    };
-
-    auto readPin = [this](uint8_t pin) -> uint8_t {
-        if (pin < A0) {
-            return digitalRead(pin);
-        } else {
-            return analogRead(pin) > 512 ? HIGH : LOW;
-        }
-    };
-
-    // Start the I2C communication
-    writePin(_sclPin, HIGH);
-    pinMode(_sdaPin, OUTPUT);
-    writePin(_sdaPin, LOW);
-    delayMicroseconds(10); // Delay for the start condition
-    writePin(_sclPin, LOW);
-
-    // Send the device address with write flag (last bit is 0)
+bool SoftMultiplexTCS34725::SoftI2CWriteByte(uint8_t byte) {
     for (uint8_t i = 0; i < 8; i++) {
-        writePin(_sdaPin, address & 0x80);
-        delayMicroseconds(1);
+        writePin(_sdaPin, byte & 0x80); // Send the most significant bit
+        delayMicroseconds(_i2cDelay);
         writePin(_sclPin, HIGH);
-        delayMicroseconds(1);
+        delayMicroseconds(_i2cDelay);
         writePin(_sclPin, LOW);
-        address <<= 1;
+        byte <<= 1; // Shift to the next bit
     }
 
     // Check for acknowledgment
-    pinMode(_sdaPin, INPUT);
+    writePin(_sdaPin, HIGH);
+    delayMicroseconds(_i2cDelay);
     writePin(_sclPin, HIGH);
-    if (readPin(_sdaPin)) {
-        return 0; // No acknowledgment
-    }
+    bool ack = !readPin(_sdaPin); // Read acknowledgment
     writePin(_sclPin, LOW);
+    delayMicroseconds(_i2cDelay);
+
+    return ack;
+}
+
+uint8_t SoftMultiplexTCS34725::SoftI2CReadByte(bool ack) {
+    uint8_t byte = 0;
+
+    // Configure SDA as input
+    pinMode(_sdaPin, INPUT);
+
+    for (uint8_t i = 0; i < 8; i++) {
+        byte <<= 1; // Shift to the next bit
+        writePin(_sclPin, HIGH);
+        delayMicroseconds(_i2cDelay);
+        if (readPin(_sdaPin)) {
+            byte |= 1; // Set the least significant bit
+        }
+        writePin(_sclPin, LOW);
+        delayMicroseconds(_i2cDelay);
+    }
+
+    // Send acknowledgment if required
+    if (ack) {
+        writePin(_sdaPin, LOW);
+    } else {
+        writePin(_sdaPin, HIGH);
+    }
+    delayMicroseconds(_i2cDelay);
+    writePin(_sclPin, HIGH);
+    delayMicroseconds(_i2cDelay);
+    writePin(_sclPin, LOW);
+    delayMicroseconds(_i2cDelay);
+
+    // Configure SDA as output for future writes
+    pinMode(_sdaPin, OUTPUT);
+
+    return byte;
+}
+
+uint8_t SoftMultiplexTCS34725::SoftI2CReadRegister(
+    uint8_t address,
+    uint8_t reg,
+    uint8_t *pData,
+    uint8_t nLen
+) {
+    // Start condition
+    writePin(_sdaPin, HIGH);
+    delayMicroseconds(_i2cDelay);
+    writePin(_sclPin, HIGH);
+    delayMicroseconds(_i2cDelay);
+    writePin(_sdaPin, LOW);
+    delayMicroseconds(_i2cDelay);
+    writePin(_sclPin, LOW);
+    delayMicroseconds(_i2cDelay);
+
+    // Send the address with the write bit
+    if (!SoftI2CWriteByte(address << 1)) {
+        return 0; // Failed to send the address
+    }
 
     // Send the register address
-    for (uint8_t i = 0; i < 8; i++) {
-        writePin(_sdaPin, reg & 0x80);
-        delayMicroseconds(1);
-        writePin(_sclPin, HIGH);
-        delayMicroseconds(1);
-        writePin(_sclPin, LOW);
-        reg <<= 1;
+    if (!SoftI2CWriteByte(reg)) {
+        return 0; // Failed to send the register address
     }
 
-    // Check for acknowledgment
-    writePin(_sclPin, HIGH);
-    if (readPin(_sdaPin)) {
-        return 0; // No acknowledgment
-    }
-    writePin(_sclPin, LOW);
-
-    // Restart for reading data
+    // Repeat start condition for reading
     writePin(_sdaPin, HIGH);
-    delayMicroseconds(1);
+    delayMicroseconds(_i2cDelay);
     writePin(_sclPin, HIGH);
-    delayMicroseconds(1);
+    delayMicroseconds(_i2cDelay);
     writePin(_sdaPin, LOW);
-    delayMicroseconds(1);
+    delayMicroseconds(_i2cDelay);
     writePin(_sclPin, LOW);
+    delayMicroseconds(_i2cDelay);
 
-    // Send the device address with read flag (last bit is 1)
-    address |= 0x01; // Set the read flag
-    for (uint8_t i = 0; i < 8; i++) {
-        writePin(_sdaPin, address & 0x80);
-        delayMicroseconds(1);
-        writePin(_sclPin, HIGH);
-        delayMicroseconds(1);
-        writePin(_sclPin, LOW);
-        address <<= 1;
+    // Send the address again with the read bit
+    if (!SoftI2CWriteByte((address << 1) | 1)) {
+        return 0; // Failed to send address with read bit
     }
 
-    // Check for acknowledgment
-    writePin(_sclPin, HIGH);
-    if (readPin(_sdaPin)) {
-        return 0; // No acknowledgment
-    }
-    writePin(_sclPin, LOW);
-
-    // Read the data bytes
-    for (uint8_t byteCount = 0; byteCount < nLen; byteCount++) {
-        uint8_t byte = 0;
-        for (uint8_t bitCount = 0; bitCount < 8; bitCount++) {
-            byte <<= 1;
-            writePin(_sclPin, HIGH);
-            if (readPin(_sdaPin)) {
-                byte |= 1;
-            }
-            writePin(_sclPin, LOW);
-        }
-        pData[byteCount] = byte;
-
-        // Send acknowledgment except for the last byte
-        if (byteCount < nLen - 1) {
-            writePin(_sdaPin, LOW);
-        } else {
-            writePin(_sdaPin, HIGH);
-        }
-        writePin(_sclPin, HIGH);
-        delayMicroseconds(1);
-        writePin(_sclPin, LOW);
+    // Read the data
+    for (uint8_t i = 0; i < nLen; i++) {
+        pData[i] = SoftI2CReadByte(i < nLen - 1);
     }
 
     // Stop condition
     writePin(_sdaPin, LOW);
-    delayMicroseconds(1);
+    delayMicroseconds(_i2cDelay);
     writePin(_sclPin, HIGH);
-    delayMicroseconds(1);
+    delayMicroseconds(_i2cDelay);
     writePin(_sdaPin, HIGH);
+    delayMicroseconds(_i2cDelay);
 
-    return 1; // Successful read
+    return nLen;
 }
 
 uint8_t SoftMultiplexTCS34725::SoftI2CWrite(uint8_t address, uint8_t reg, uint8_t *pData, uint8_t nLen) {
-    // Helper functions to handle both digital and analog pins
-    auto writePin = [this](uint8_t pin, uint8_t value) {
-        if (pin < A0) {
-            digitalWrite(pin, value);
-        } else {
-            analogWrite(pin, value ? 255 : 0);
-        }
-    };
-
-    auto readPin = [this](uint8_t pin) -> uint8_t {
-        if (pin < A0) {
-            return digitalRead(pin);
-        } else {
-            return analogRead(pin) > 512 ? HIGH : LOW;
-        }
-    };
-
     // Start the I2C communication
     writePin(_sclPin, HIGH);
     pinMode(_sdaPin, OUTPUT);
@@ -168,9 +159,9 @@ uint8_t SoftMultiplexTCS34725::SoftI2CWrite(uint8_t address, uint8_t reg, uint8_
     // Send the device address with write flag (last bit is 0)
     for (uint8_t i = 0; i < 8; i++) {
         writePin(_sdaPin, address & 0x80);
-        delayMicroseconds(1);
+        delayMicroseconds(_i2cDelay);;
         writePin(_sclPin, HIGH);
-        delayMicroseconds(1);
+        delayMicroseconds(_i2cDelay);;
         writePin(_sclPin, LOW);
         address <<= 1;
     }
@@ -186,9 +177,9 @@ uint8_t SoftMultiplexTCS34725::SoftI2CWrite(uint8_t address, uint8_t reg, uint8_
     // Send the register address
     for (uint8_t i = 0; i < 8; i++) {
         writePin(_sdaPin, reg & 0x80);
-        delayMicroseconds(1);
+        delayMicroseconds(_i2cDelay);;
         writePin(_sclPin, HIGH);
-        delayMicroseconds(1);
+        delayMicroseconds(_i2cDelay);;
         writePin(_sclPin, LOW);
         reg <<= 1;
     }
@@ -205,9 +196,9 @@ uint8_t SoftMultiplexTCS34725::SoftI2CWrite(uint8_t address, uint8_t reg, uint8_
         uint8_t byte = pData[byteCount];
         for (uint8_t bitCount = 0; bitCount < 8; bitCount++) {
             writePin(_sdaPin, byte & 0x80);
-            delayMicroseconds(1);
+            delayMicroseconds(_i2cDelay);;
             writePin(_sclPin, HIGH);
-            delayMicroseconds(1);
+            delayMicroseconds(_i2cDelay);;
             writePin(_sclPin, LOW);
             byte <<= 1;
         }
@@ -222,9 +213,9 @@ uint8_t SoftMultiplexTCS34725::SoftI2CWrite(uint8_t address, uint8_t reg, uint8_
 
     // Stop condition
     writePin(_sdaPin, LOW);
-    delayMicroseconds(1);
+    delayMicroseconds(_i2cDelay);;
     writePin(_sclPin, HIGH);
-    delayMicroseconds(1);
+    delayMicroseconds(_i2cDelay);;
     writePin(_sdaPin, HIGH);
 
     return 1; // Successful write
@@ -253,9 +244,18 @@ bool SoftMultiplexTCS34725::begin() {
     }
 
     // Enable the sensor
-    uint8_t enable = TCS34725_POWER_ON | TCS34725_ADC_ENABLE;
-    if (!SoftI2CWrite(TCS34725_ADDRESS, TCS34725_ENABLE, &enable, 1)) {
-        return false; // Failed to enable the sensor
+    uint8_t powerOn = TCS34725_POWER_ON;
+    if (!SoftI2CWrite(TCS34725_ADDRESS, TCS34725_ENABLE, &powerOn, 1)) {
+        return false; // Failed to power on the device
+    }
+
+    // Wait for 3 milliseconds
+    delay(3);
+
+    // Power on the device and enable the ADC
+    uint8_t enableADC = TCS34725_POWER_ON | TCS34725_ADC_ENABLE;
+    if (!SoftI2CWrite(TCS34725_ADDRESS, TCS34725_ENABLE, &enableADC, 1)) {
+        return false; // Failed to enable the ADC
     }
 
     return true; // Initialization successful

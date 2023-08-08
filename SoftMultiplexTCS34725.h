@@ -31,18 +31,27 @@ typedef enum
 
 class SoftMultiplexTCS34725 {
 public:
-    SoftMultiplexTCS34725(tcs34725IntegrationTime_t integrationTime, tcs34725Gain_t gain, uint8_t sdaPin, uint8_t sclPin);
+    SoftMultiplexTCS34725(
+      tcs34725IntegrationTime_t = TCS34725_INTEGRATIONTIME_2_4MS,
+      tcs34725Gain_t = TCS34725_GAIN_1X,
+      uint8_t sdaPin = 2,
+      uint8_t sclPin = 3,
+      uint8_t i2cDelay = 10
+    );
     bool begin();
     void setInterrupt(bool flag);
     void getRawData(uint16_t *red, uint16_t *green, uint16_t *blue, uint16_t *clear);
 
     uint8_t SoftI2CReadRegister(uint8_t address, uint8_t reg, uint8_t *pData, uint8_t nLen);
     uint8_t SoftI2CWrite(uint8_t address, uint8_t reg, uint8_t *pData, uint8_t nLen);
+    bool SoftI2CWriteByte(uint8_t byte);
+    uint8_t SoftI2CReadByte(bool ack);
 
 private:
     uint8_t _sdaPin, _sclPin;
     tcs34725IntegrationTime_t _integrationTime;
     tcs34725Gain_t _gain;
+    uint8_t _i2cDelay; // Delay for I2C communication
     
     // Other private members and methods from Adafruit_TCS34725_SoftI2C and Multi_BitBang
     // ...
