@@ -17,9 +17,6 @@ SoftMultiplexTCS34725::SoftMultiplexTCS34725(tcs34725IntegrationTime_t integrati
         pinMode(_sclPin, OUTPUT);
         analogWrite(_sclPin, 255); // Set SCL high
     }
-
-    // If there are any other initializations specific to the TCS34725 sensor or Multi_BitBang library, add them here.
-    // For example, setting default values for other private member variables.
 }
 
 bool SoftMultiplexTCS34725::begin() {
@@ -36,17 +33,17 @@ bool SoftMultiplexTCS34725::begin() {
     }
 
     // Set the integration time and gain
-    if (!Multi_I2CWrite(TCS34725_ADDRESS, TCS34725_ATIME, (uint8_t *)&_integrationTime, 1)) {
+    if (!SoftI2CWrite(TCS34725_ADDRESS, TCS34725_ATIME, (uint8_t *)&_integrationTime, 1)) {
         return false; // Failed to set integration time
     }
 
-    if (!Multi_I2CWrite(TCS34725_ADDRESS, TCS34725_CONTROL, (uint8_t *)&_gain, 1)) {
+    if (!SoftI2CWrite(TCS34725_ADDRESS, TCS34725_CONTROL, (uint8_t *)&_gain, 1)) {
         return false; // Failed to set gain
     }
 
     // Enable the sensor
     uint8_t enable = TCS34725_POWER_ON | TCS34725_ADC_ENABLE;
-    if (!Multi_I2CWrite(TCS34725_ADDRESS, TCS34725_ENABLE, &enable, 1)) {
+    if (!SoftI2CWrite(TCS34725_ADDRESS, TCS34725_ENABLE, &enable, 1)) {
         return false; // Failed to enable the sensor
     }
 
@@ -69,7 +66,7 @@ void SoftMultiplexTCS34725::setInterrupt(bool flag) {
     }
 
     // Write the updated value back to the ENABLE register
-    Multi_I2CWrite(TCS34725_ADDRESS, TCS34725_ENABLE, &regValue, 1);
+    SoftI2CWrite(TCS34725_ADDRESS, TCS34725_ENABLE, &regValue, 1);
 }
 
 void SoftMultiplexTCS34725::getRawData(uint16_t *red, uint16_t *green, uint16_t *blue, uint16_t *clear) {
