@@ -37,7 +37,7 @@ public:
     void getRawData(uint16_t *red, uint16_t *green, uint16_t *blue, uint16_t *clear);
 
     uint8_t SoftI2CReadRegister(uint8_t address, uint8_t reg, uint8_t *pData, uint8_t nLen);
-    uint8_t Multi_I2CWrite(uint8_t address, uint8_t *pData, uint8_t nLen);
+    uint8_t SoftI2CWrite(uint8_t address, uint8_t reg, uint8_t *pData, uint8_t nLen);
 
 private:
     uint8_t _sdaPin, _sclPin;
